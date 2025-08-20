@@ -9,7 +9,7 @@ type HistorySidebarProps = {
 };
 
 export function HistorySidebar({ selectedDayIndex, onDaySelect }: HistorySidebarProps) {
-  const [isExpanded, setIsExpanded] = useState(true); // Temporarily start expanded
+  const [isExpanded, setIsExpanded] = useState(false); // Start collapsed
   const [isMounted, setIsMounted] = useState(false);
   const historyDays = getHistoryDays(30);
   const currentDayIndex = getDayIndex();
@@ -51,18 +51,21 @@ export function HistorySidebar({ selectedDayIndex, onDaySelect }: HistorySidebar
       )}
       
       {/* Sidebar */}
-      <div className={cn(
-        "fixed left-0 top-0 h-full bg-gray-900 border-r border-gray-700 transition-transform duration-300 z-50 w-80",
-        isExpanded ? "translate-x-0" : "-translate-x-full"
-      )}>
+      <div 
+        className="fixed left-0 top-0 h-full bg-gray-900 border-r border-gray-700 transition-transform duration-300 z-50 w-80"
+        style={{ 
+          transform: isExpanded ? 'translateX(0)' : 'translateX(-100%)',
+          visibility: isMounted ? 'visible' : 'hidden'
+        }}
+      >
         {/* Tab */}
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className={cn(
-            "absolute top-20 bg-gray-800 text-white px-2 py-3 rounded-r-md border border-l-0 border-gray-600",
-            "hover:bg-gray-700 transition-colors",
-            isExpanded ? "-right-12" : "right-0 translate-x-full"
-          )}
+          className="absolute top-20 bg-gray-800 text-white px-2 py-3 rounded-r-md border border-l-0 border-gray-600 hover:bg-gray-700 transition-all"
+          style={{ 
+            left: isExpanded ? '320px' : '0px',
+            transform: isExpanded ? 'translateX(0)' : 'translateX(0)'
+          }}
         >
           <div className="writing-mode-vertical-rl text-sm font-medium">
             History

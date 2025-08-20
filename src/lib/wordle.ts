@@ -79,10 +79,15 @@ export type GameState = {
   status: GameStatus;
   hardMode?: boolean;
   lastPlayed: string; // ISO date
+  dayIndex: number; // day index for this game
 };
 
-const STORAGE_KEY = "wordle-state-v1";
+export type GameHistory = Record<number, GameState>;
 
+const STORAGE_KEY = "wordle-state-v1"; // Keep for backward compatibility
+const HISTORY_KEY = "wordle-history-v1";
+
+// Legacy function for backward compatibility
 export function loadState(): GameState | null {
   if (typeof window === "undefined") return null;
   try {
@@ -93,6 +98,7 @@ export function loadState(): GameState | null {
   }
 }
 
+// Legacy function for backward compatibility
 export function saveState(state: GameState) {
   if (typeof window === "undefined") return;
   try {
@@ -100,6 +106,42 @@ export function saveState(state: GameState) {
   } catch {
     // ignore quota errors
   }
+}
+
+// New history functions
+export function loadGameHistory(): GameHistory {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) as GameHistory : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveGameHistory(history: GameHistory) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+export function getGameForDay(dayIndex: number): GameState | null {
+  const history = loadGameHistory();
+  return history[dayIndex] || null;
+}
+
+export function saveGameForDay(dayIndex: number, state: GameState) {
+  const history = loadGameHistory();
+  history[dayIndex] = { ...state, dayIndex };
+  saveGameHistory(history);
+}
+
+export function getSolutionForDay(dayIndex: number): string {
+  const idx = dayIndex % ANSWERS.length;
+  return ANSWERS[idx];
 }
 
 export function deriveKeyboard(resultRows: EvaluatedCell[][]): Record<string, LetterStatus> {

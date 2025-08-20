@@ -1,9 +1,11 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { Board } from "@/components/Board";
 import { Header } from "@/components/Header";
 import { Keyboard } from "@/components/Keyboard";
 import { Modal } from "@/components/Modal";
+import { HistorySidebar } from "@/components/HistorySidebar";
 import {
   EvaluatedCell,
   GameState,
@@ -13,15 +15,32 @@ import {
   evaluateGuess,
   normalizeGuess,
   pickDailySolution,
+  getSolutionForDayIndex,
   randomSolution,
   isValidWord,
   deriveKeyboard,
   loadState,
+  loadStateForDay,
   saveState,
+  getDayIndex,
 } from "@/lib/wordle";
 
 export default function Home() {
-  const [solution, setSolution] = useState<string>(pickDailySolution);
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  
+  // Get selected day from URL parameter
+  const urlDay = searchParams.get("day");
+  const selectedDayIndex = urlDay ? parseInt(urlDay, 10) : null;
+  const currentDayIndex = getDayIndex();
+  
+  // Determine which day we're playing (URL parameter or current day)
+  const activeDayIndex = selectedDayIndex ?? currentDayIndex;
+  const isPlayingHistorical = selectedDayIndex !== null;
+  
+  const [solution, setSolution] = useState<string>(() => 
+    isPlayingHistorical ? getSolutionForDayIndex(activeDayIndex) : pickDailySolution()
+  );
   const [guesses, setGuesses] = useState<string[]>([]);
   const [results, setResults] = useState<EvaluatedCell[][]>([]);
   const [current, setCurrent] = useState<string>("");
@@ -31,7 +50,10 @@ export default function Home() {
 
   // Load existing game from localStorage
   useEffect(() => {
-    const state = loadState();
+    const state = isPlayingHistorical 
+      ? loadStateForDay(activeDayIndex)
+      : loadState();
+      
     if (state && state.solution) {
       setSolution(state.solution);
       setGuesses(state.guesses);
@@ -39,8 +61,17 @@ export default function Home() {
       setResults(evals);
       const newStatus: GameStatus = state.status ?? (state.guesses.includes(state.solution) ? "won" : state.guesses.length >= MAX_GUESSES ? "lost" : "playing");
       setStatus(newStatus);
+    } else {
+      // Reset state for the new day
+      const newSolution = isPlayingHistorical ? getSolutionForDayIndex(activeDayIndex) : pickDailySolution();
+      setSolution(newSolution);
+      setGuesses([]);
+      setResults([]);
+      setStatus("playing");
+      setCurrent("");
+      setShowWin(false);
     }
-  }, []);
+  }, [activeDayIndex, isPlayingHistorical]);
 
   // Persist state
   useEffect(() => {
@@ -49,9 +80,10 @@ export default function Home() {
       guesses,
       status,
       lastPlayed: new Date().toISOString(),
+      dayIndex: activeDayIndex,
     };
     saveState(s);
-  }, [solution, guesses, status]);
+  }, [solution, guesses, status, activeDayIndex]);
 
   // Timed ephemeral messages
   useEffect(() => {
@@ -133,45 +165,69 @@ export default function Home() {
     setMessage("New game");
   }, []);
 
+  const handleDaySelect = useCallback((dayIndex: number | null) => {
+    if (dayIndex === null) {
+      // Go back to current day
+      router.push("/");
+    } else {
+      // Navigate to historical day
+      router.push(`/?day=${dayIndex}`);
+    }
+  }, [router]);
+
   return (
-    <main className="mx-auto max-w-md p-4">
-      <Header onNewGame={newGame} />
-      <div className="flex flex-col items-center gap-4">
-        <Board results={results} currentGuess={current} />
-        <Keyboard keyStatuses={keyStatuses} onKey={onKey} />
-      </div>
-
-      {/* Toast message */}
-      {message && (
-        <div className="fixed left-1/2 top-16 -translate-x-1/2 rounded bg-gray-900 px-3 py-2 text-sm text-white shadow">
-          {message}
-        </div>
-      )}
-
-      <Modal title={status === "won" ? "You Won!" : "Game Over"} open={showWin} onClose={() => setShowWin(false)}>
-        {status === "won" ? (
-          <p className="mb-2">Great job! Want to play again?</p>
-        ) : (
-          <p className="mb-2">The word was: <strong>{solution}</strong></p>
+    <>
+      <HistorySidebar 
+        selectedDayIndex={selectedDayIndex}
+        onDaySelect={handleDaySelect}
+      />
+      <main className="mx-auto max-w-md p-4">
+        <Header onNewGame={newGame} />
+        {isPlayingHistorical && (
+          <div className="mb-4 p-3 bg-blue-900 border border-blue-700 rounded-md">
+            <p className="text-sm text-blue-200">
+              📅 Playing historical game from{" "}
+              {new Date(new Date("2022-01-01T00:00:00Z").getTime() + activeDayIndex * 24 * 60 * 60 * 1000).toLocaleDateString()}
+            </p>
+          </div>
         )}
-        <div className="mt-2 flex justify-end gap-2">
-          <button
-            className="rounded bg-gray-800 px-3 py-1 text-white hover:bg-gray-700"
-            onClick={() => setShowWin(false)}
-          >
-            Close
-          </button>
-          <button
-            className="rounded bg-green-600 px-3 py-1 font-semibold text-white hover:bg-green-500"
-            onClick={() => {
-              setShowWin(false);
-              newGame();
-            }}
-          >
-            New Game
-          </button>
+        <div className="flex flex-col items-center gap-4">
+          <Board results={results} currentGuess={current} />
+          <Keyboard keyStatuses={keyStatuses} onKey={onKey} />
         </div>
-      </Modal>
-    </main>
+
+        {/* Toast message */}
+        {message && (
+          <div className="fixed left-1/2 top-16 -translate-x-1/2 rounded bg-gray-900 px-3 py-2 text-sm text-white shadow">
+            {message}
+          </div>
+        )}
+
+        <Modal title={status === "won" ? "You Won!" : "Game Over"} open={showWin} onClose={() => setShowWin(false)}>
+          {status === "won" ? (
+            <p className="mb-2">Great job! Want to play again?</p>
+          ) : (
+            <p className="mb-2">The word was: <strong>{solution}</strong></p>
+          )}
+          <div className="mt-2 flex justify-end gap-2">
+            <button
+              className="rounded bg-gray-800 px-3 py-1 text-white hover:bg-gray-700"
+              onClick={() => setShowWin(false)}
+            >
+              Close
+            </button>
+            <button
+              className="rounded bg-green-600 px-3 py-1 font-semibold text-white hover:bg-green-500"
+              onClick={() => {
+                setShowWin(false);
+                newGame();
+              }}
+            >
+              New Game
+            </button>
+          </div>
+        </Modal>
+      </main>
+    </>
   );
 }

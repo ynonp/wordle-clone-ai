@@ -4,54 +4,95 @@ import { Board } from "@/components/Board";
 import { Header } from "@/components/Header";
 import { Keyboard } from "@/components/Keyboard";
 import { Modal } from "@/components/Modal";
+import { Sidebar } from "@/components/Sidebar";
 import {
   EvaluatedCell,
   GameState,
   GameStatus,
+  GameHistory,
   MAX_GUESSES,
   WORD_LENGTH,
   evaluateGuess,
   normalizeGuess,
-  pickDailySolution,
-  randomSolution,
   isValidWord,
   deriveKeyboard,
   loadState,
   saveState,
+  loadGameHistory,
+  getGameForDay,
+  saveGameForDay,
+  getDayIndex,
+  getSolutionForDay,
 } from "@/lib/wordle";
 
 export default function Home() {
-  const [solution, setSolution] = useState<string>(pickDailySolution);
+  const [currentDayIndex, setCurrentDayIndex] = useState<number>(getDayIndex());
+  const [solution, setSolution] = useState<string>("");
   const [guesses, setGuesses] = useState<string[]>([]);
   const [results, setResults] = useState<EvaluatedCell[][]>([]);
   const [current, setCurrent] = useState<string>("");
   const [status, setStatus] = useState<GameStatus>("playing");
   const [message, setMessage] = useState<string>("");
   const [showWin, setShowWin] = useState(false);
+  const [gameHistory, setGameHistory] = useState<GameHistory>({});
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Load existing game from localStorage
+  // Load game history and migrate legacy state if needed
   useEffect(() => {
-    const state = loadState();
-    if (state && state.solution) {
-      setSolution(state.solution);
-      setGuesses(state.guesses);
-      const evals = state.guesses.map((g) => evaluateGuess(g, state.solution));
-      setResults(evals);
-      const newStatus: GameStatus = state.status ?? (state.guesses.includes(state.solution) ? "won" : state.guesses.length >= MAX_GUESSES ? "lost" : "playing");
-      setStatus(newStatus);
+    const history = loadGameHistory();
+    setGameHistory(history);
+
+    // Migrate legacy state if exists and no history
+    const legacyState = loadState();
+    if (legacyState && Object.keys(history).length === 0) {
+      const todayIndex = getDayIndex();
+      saveGameForDay(todayIndex, { ...legacyState, dayIndex: todayIndex });
+      setGameHistory({ [todayIndex]: { ...legacyState, dayIndex: todayIndex } });
     }
   }, []);
 
-  // Persist state
+  // Load game for current day
   useEffect(() => {
-    const s: GameState = {
-      solution,
-      guesses,
-      status,
-      lastPlayed: new Date().toISOString(),
-    };
-    saveState(s);
-  }, [solution, guesses, status]);
+    const gameForDay = getGameForDay(currentDayIndex);
+    const solutionForDay = getSolutionForDay(currentDayIndex);
+    
+    if (gameForDay) {
+      setSolution(gameForDay.solution);
+      setGuesses(gameForDay.guesses);
+      const evals = gameForDay.guesses.map((g) => evaluateGuess(g, gameForDay.solution));
+      setResults(evals);
+      setStatus(gameForDay.status);
+    } else {
+      // New game for this day
+      setSolution(solutionForDay);
+      setGuesses([]);
+      setResults([]);
+      setStatus("playing");
+    }
+    
+    setCurrent("");
+    setShowWin(false);
+    setMessage("");
+  }, [currentDayIndex]);
+
+  // Persist state to history
+  useEffect(() => {
+    if (solution && guesses.length >= 0) {
+      const gameState: GameState = {
+        solution,
+        guesses,
+        status,
+        lastPlayed: new Date().toISOString(),
+        dayIndex: currentDayIndex,
+      };
+      
+      saveGameForDay(currentDayIndex, gameState);
+      setGameHistory(prev => ({ ...prev, [currentDayIndex]: gameState }));
+      
+      // Also save to legacy storage for backward compatibility
+      saveState(gameState);
+    }
+  }, [solution, guesses, status, currentDayIndex]);
 
   // Timed ephemeral messages
   useEffect(() => {
@@ -124,18 +165,24 @@ export default function Home() {
   }, [onKey]);
 
   const newGame = useCallback(() => {
-    setSolution(randomSolution());
-    setGuesses([]);
-    setResults([]);
-    setCurrent("");
-    setStatus("playing");
-    setShowWin(false);
+    const today = getDayIndex();
+    setCurrentDayIndex(today);
+    // The useEffect will handle loading/creating the game for today
     setMessage("New game");
+  }, []);
+
+  const handleSelectDay = useCallback((dayIndex: number) => {
+    setCurrentDayIndex(dayIndex);
+    setSidebarOpen(false);
+  }, []);
+
+  const handleToggleHistory = useCallback(() => {
+    setSidebarOpen(prev => !prev);
   }, []);
 
   return (
     <main className="mx-auto max-w-md p-4">
-      <Header onNewGame={newGame} />
+      <Header onNewGame={newGame} onToggleHistory={handleToggleHistory} />
       <div className="flex flex-col items-center gap-4">
         <Board results={results} currentGuess={current} />
         <Keyboard keyStatuses={keyStatuses} onKey={onKey} />
@@ -147,6 +194,14 @@ export default function Home() {
           {message}
         </div>
       )}
+
+      <Sidebar
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        gameHistory={gameHistory}
+        currentDayIndex={currentDayIndex}
+        onSelectDay={handleSelectDay}
+      />
 
       <Modal title={status === "won" ? "You Won!" : "Game Over"} open={showWin} onClose={() => setShowWin(false)}>
         {status === "won" ? (

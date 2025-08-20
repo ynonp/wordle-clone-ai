@@ -6,3 +6,8 @@
 /* @import "tailwindcss/preflight.css" layer(base); */
 /* @import "tailwindcss/utilities.css" layer(utilities); */
 
+.writing-mode-vertical-rl {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+

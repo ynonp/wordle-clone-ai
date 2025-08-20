@@ -67,6 +67,15 @@ export function pickDailySolution(): string {
   return ANSWERS[idx];
 }
 
+export function getSolutionForDay(dayIndex: number): string {
+  const idx = dayIndex % ANSWERS.length;
+  return ANSWERS[idx];
+}
+
+export function getCurrentDayIndex(): number {
+  return getDayIndex();
+}
+
 export function randomSolution(): string {
   return ANSWERS[Math.floor(Math.random() * ANSWERS.length)];
 }
@@ -79,9 +88,11 @@ export type GameState = {
   status: GameStatus;
   hardMode?: boolean;
   lastPlayed: string; // ISO date
+  dayIndex?: number; // For historical games
 };
 
 const STORAGE_KEY = "wordle-state-v1";
+const HISTORY_STORAGE_KEY = "wordle-history-v1";
 
 export function loadState(): GameState | null {
   if (typeof window === "undefined") return null;
@@ -100,6 +111,64 @@ export function saveState(state: GameState) {
   } catch {
     // ignore quota errors
   }
+}
+
+export function loadHistoricalState(dayIndex: number): GameState | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+    const history = raw ? JSON.parse(raw) : {};
+    return history[dayIndex] || null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveHistoricalState(dayIndex: number, state: GameState) {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+    const history = raw ? JSON.parse(raw) : {};
+    history[dayIndex] = { ...state, dayIndex };
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
+  } catch {
+    // ignore quota errors
+  }
+}
+
+export function getHistoricalDays(currentDayIndex: number, daysBack: number = 30): Array<{dayIndex: number, solution: string, date: Date}> {
+  const days = [];
+  for (let i = 1; i <= daysBack; i++) {
+    const dayIndex = currentDayIndex - i;
+    if (dayIndex < 0) break;
+    
+    const solution = getSolutionForDay(dayIndex);
+    const baseDate = new Date("2022-01-01T00:00:00Z");
+    const date = new Date(baseDate.getTime() + dayIndex * 24 * 60 * 60 * 1000);
+    
+    days.push({ dayIndex, solution, date });
+  }
+  return days;
+}
+
+export function getUrlParams(): { day?: number } {
+  if (typeof window === "undefined") return {};
+  const params = new URLSearchParams(window.location.search);
+  const day = params.get('day');
+  return {
+    day: day ? parseInt(day, 10) : undefined
+  };
+}
+
+export function setUrlParam(day?: number) {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (day !== undefined && day !== getCurrentDayIndex()) {
+    url.searchParams.set('day', day.toString());
+  } else {
+    url.searchParams.delete('day');
+  }
+  window.history.replaceState({}, '', url.toString());
 }
 
 export function deriveKeyboard(resultRows: EvaluatedCell[][]): Record<string, LetterStatus> {

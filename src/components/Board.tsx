@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 type BoardProps = {
   results: EvaluatedCell[][]; // completed guesses
   currentGuess: string; // partial input
+  animatingRow?: number; // row index that is currently animating
+  animatingTiles?: boolean[]; // which tiles in the animating row are currently animating
 };
 
 const statusClass: Record<LetterStatus, string> = {
@@ -15,13 +17,25 @@ const statusClass: Record<LetterStatus, string> = {
   empty: "bg-transparent text-white border-gray-600",
 };
 
-function Tile({ letter, status }: { letter: string; status: LetterStatus }) {
+function Tile({ 
+  letter, 
+  status, 
+  isAnimating = false,
+  animationDelay = 0
+}: { 
+  letter: string; 
+  status: LetterStatus;
+  isAnimating?: boolean;
+  animationDelay?: number;
+}) {
   return (
     <div
       className={cn(
         "flex h-12 w-12 items-center justify-center rounded border text-2xl font-semibold uppercase select-none",
-        statusClass[status]
+        statusClass[status],
+        isAnimating && "tile-flip"
       )}
+      style={isAnimating ? { animationDelay: `${animationDelay}ms` } : {}}
       aria-label={status !== "empty" ? `${letter} ${status}` : letter}
     >
       {letter}
@@ -29,17 +43,29 @@ function Tile({ letter, status }: { letter: string; status: LetterStatus }) {
   );
 }
 
-export const Board = React.memo(function Board({ results, currentGuess }: BoardProps) {
+export const Board = React.memo(function Board({ 
+  results, 
+  currentGuess, 
+  animatingRow,
+  animatingTiles 
+}: BoardProps) {
   const rows: Array<React.ReactNode> = [];
   const filledRows = results.length;
 
   // Completed rows
   for (let r = 0; r < filledRows; r++) {
     const row = results[r];
+    const isAnimatingThisRow = animatingRow === r;
     rows.push(
       <div key={`row-${r}`} className="grid grid-cols-5 gap-2">
         {row.map((cell, i) => (
-          <Tile key={i} letter={cell.letter} status={cell.status} />
+          <Tile 
+            key={i} 
+            letter={cell.letter} 
+            status={cell.status}
+            isAnimating={isAnimatingThisRow && animatingTiles?.[i]}
+            animationDelay={isAnimatingThisRow ? i * 100 : 0}
+          />
         ))}
       </div>
     );

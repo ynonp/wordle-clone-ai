@@ -28,6 +28,10 @@ export default function Home() {
   const [status, setStatus] = useState<GameStatus>("playing");
   const [message, setMessage] = useState<string>("");
   const [showWin, setShowWin] = useState(false);
+  
+  // Animation state
+  const [animatingRow, setAnimatingRow] = useState<number | undefined>();
+  const [animatingTiles, setAnimatingTiles] = useState<boolean[]>([]);
 
   // Load existing game from localStorage
   useEffect(() => {
@@ -63,7 +67,7 @@ export default function Home() {
   const keyStatuses = useMemo(() => deriveKeyboard(results), [results]);
 
   const handleSubmit = useCallback(() => {
-    if (status !== "playing") return;
+    if (status !== "playing" || animatingRow !== undefined) return; // Prevent new submissions during animation
     if (current.length !== WORD_LENGTH) {
       setMessage("Not enough letters");
       return;
@@ -73,27 +77,53 @@ export default function Home() {
       setMessage("Not in word list");
       return;
     }
+    
     const evaluation = evaluateGuess(guess, solution);
-    const newResults = [...results, evaluation];
     const newGuesses = [...guesses, guess];
+    const rowIndex = results.length;
+    
+    // Start animation
+    setAnimatingRow(rowIndex);
+    setAnimatingTiles(new Array(WORD_LENGTH).fill(false));
+    setCurrent("");
+    
+    // Add the result immediately (but tiles will show animation)
+    const newResults = [...results, evaluation];
     setResults(newResults);
     setGuesses(newGuesses);
-    setCurrent("");
-
-    if (guess === solution) {
-      setStatus("won");
-      setShowWin(true);
-      setMessage("You win!");
-    } else if (newGuesses.length >= MAX_GUESSES) {
-      setStatus("lost");
-      setShowWin(true);
-      setMessage(solution);
+    
+    // Animate tiles one by one with delays
+    for (let i = 0; i < WORD_LENGTH; i++) {
+      setTimeout(() => {
+        setAnimatingTiles(prev => {
+          const updated = [...prev];
+          updated[i] = true;
+          return updated;
+        });
+      }, i * 100);
     }
-  }, [current, status, solution, results, guesses]);
+    
+    // End animation after all tiles are done
+    setTimeout(() => {
+      setAnimatingRow(undefined);
+      setAnimatingTiles([]);
+      
+      // Check game end conditions after animation completes
+      if (guess === solution) {
+        setStatus("won");
+        setShowWin(true);
+        setMessage("You win!");
+      } else if (newGuesses.length >= MAX_GUESSES) {
+        setStatus("lost");
+        setShowWin(true);
+        setMessage(solution);
+      }
+    }, WORD_LENGTH * 100 + 600); // 600ms for the animation duration
+  }, [current, status, solution, results, guesses, animatingRow]);
 
   const onKey = useCallback(
     (key: string) => {
-      if (status !== "playing") return;
+      if (status !== "playing" || animatingRow !== undefined) return; // Prevent input during animation
       if (key === "ENTER") {
         handleSubmit();
         return;
@@ -106,7 +136,7 @@ export default function Home() {
         setCurrent((s) => (s.length < WORD_LENGTH ? normalizeGuess(s + key) : s));
       }
     },
-    [handleSubmit, status]
+    [handleSubmit, status, animatingRow]
   );
 
   // Global keyboard capture
@@ -131,13 +161,20 @@ export default function Home() {
     setStatus("playing");
     setShowWin(false);
     setMessage("New game");
+    setAnimatingRow(undefined);
+    setAnimatingTiles([]);
   }, []);
 
   return (
     <main className="mx-auto max-w-md p-4">
       <Header onNewGame={newGame} />
       <div className="flex flex-col items-center gap-4">
-        <Board results={results} currentGuess={current} />
+        <Board 
+          results={results} 
+          currentGuess={current} 
+          animatingRow={animatingRow}
+          animatingTiles={animatingTiles}
+        />
         <Keyboard keyStatuses={keyStatuses} onKey={onKey} />
       </div>
 

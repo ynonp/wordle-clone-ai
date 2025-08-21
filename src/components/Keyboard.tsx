@@ -5,8 +5,8 @@ import { cn } from "@/lib/utils";
 
 const ROWS = [
   ["Q","W","E","R","T","Y","U","I","O","P"],
-  ["A","S","D","F","G","H","J","K","L"],
-  ["ENTER","Z","X","C","V","B","N","M","DEL"],
+  ["A","S","D","F","G","H","J","K","L","M"],
+  ["ENTER","Z","X","C","V","B","N","DEL"],
 ];
 
 const statusClass: Record<LetterStatus, string> = {
